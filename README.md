@@ -100,7 +100,7 @@ model-specific to get right. You *can* add a per-model `"limit": { "context": N,
 the model's own card rather than copying any from this README.
 
 ### pi
-Install the companion extension [`pi-cocore-local`](../pi-cocore-local) — it registers
+Install the companion extension [`pi-cocore-local`](https://github.com/tenorune/pi-cocore-local) — it registers
 a `cocore-local` provider pointed at this gateway.
 
 ### OFF GRID (iPhone, over your overlay)
