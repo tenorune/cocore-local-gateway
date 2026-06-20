@@ -1,0 +1,6 @@
+.env
+logs/
+*.plist
+__pycache__/
+*.pyc
+.DS_Store
