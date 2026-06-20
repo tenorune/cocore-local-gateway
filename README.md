@@ -38,11 +38,21 @@ No API key anywhere — access control is the bind set. Never binds `0.0.0.0`.
 
 ## Clients
 
+The gateway is agnostic about which models you run — it advertises whatever cocore
+engines are live. Discover the current IDs first; the examples below use a
+`$MODEL` placeholder rather than any specific model.
+
+```bash
+# List whatever is loaded right now, and grab the first id into $MODEL
+curl -s http://127.0.0.1:1234/v1/models | python3 -m json.tool
+MODEL=$(curl -s http://127.0.0.1:1234/v1/models | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"][0]["id"])')
+```
+
 ### curl
 ```bash
 curl -N http://127.0.0.1:1234/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"mlx-community/Qwen2.5-7B-Instruct-4bit","messages":[{"role":"user","content":"hi"}],"stream":true}'
+  -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true}"
 ```
 
 ### OpenCode
@@ -56,14 +66,17 @@ Merge into `~/.config/opencode/opencode.jsonc`:
       "name": "co/core (local)",
       "options": { "baseURL": "http://127.0.0.1:1234/v1", "apiKey": "local" },
       "models": {
-        "mlx-community/Qwen2.5-7B-Instruct-4bit":   { "name": "Qwen2.5 7B (local)" },
-        "mlx-community/Qwen3.5-9B-MLX-4bit":        { "name": "Qwen3.5 9B (local)" },
-        "mlx-community/Qwen2.5-0.5B-Instruct-4bit": { "name": "Qwen2.5 0.5B (local)" }
+        // One entry per model id reported by GET /v1/models. Replace these
+        // placeholders with whatever your cocore agent currently serves.
+        "<model-id-from-/v1/models>":         { "name": "My local model" },
+        "<another-model-id-from-/v1/models>": { "name": "My other local model" }
       }
     }
   }
 }
 ```
+OpenCode needs models declared explicitly, so this list is the one place you name
+your own model ids — but the gateway itself imposes none.
 
 ### pi
 Install the companion extension [`pi-cocore-local`](../pi-cocore-local) — it registers
