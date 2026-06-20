@@ -56,27 +56,54 @@ curl -N http://127.0.0.1:1234/v1/chat/completions \
 ```
 
 ### OpenCode
-Merge into `~/.config/opencode/opencode.jsonc`:
+OpenCode can't auto-discover models from an OpenAI-compatible endpoint — you list
+them yourself under `models`. The **keys must exactly match** the ids from
+`GET /v1/models`; everything else (`name`, `limit`) is just how OpenCode displays
+and sizes them.
+
+Merge this into `~/.config/opencode/opencode.jsonc` (create the file if absent):
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
+
+  // Optional: make a cocore-local model the default when OpenCode starts.
+  // Format is "<providerID>/<modelID>".
+  "model": "cocore-local/REPLACE-WITH-A-MODEL-ID",
+
   "provider": {
-    "cocore-local": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "co/core (local)",
-      "options": { "baseURL": "http://127.0.0.1:1234/v1", "apiKey": "local" },
+    "cocore-local": {                       // provider id — any string; used in "model" above
+      "npm": "@ai-sdk/openai-compatible",   // the OpenAI-compatible adapter
+      "name": "co/core (local)",            // label shown in the OpenCode UI
+      "options": {
+        "baseURL": "http://127.0.0.1:1234/v1",
+        "apiKey": "local"                   // gateway ignores it, but the SDK wants a non-empty value
+      },
       "models": {
-        // One entry per model id reported by GET /v1/models. Replace these
-        // placeholders with whatever your cocore agent currently serves.
-        "<model-id-from-/v1/models>":         { "name": "My local model" },
-        "<another-model-id-from-/v1/models>": { "name": "My other local model" }
+        // ONE entry per id from GET /v1/models. The keys below are placeholders
+        // showing the shape — replace them with the ids your cocore agent serves.
+        // "limit" is optional but recommended so OpenCode trims context correctly.
+        "<org>/<your-first-model-id>": {
+          "name": "My local model",
+          "limit": { "context": 32768, "output": 8192 }
+        },
+        "<org>/<your-second-model-id>": {
+          "name": "My other local model",
+          "limit": { "context": 32768, "output": 8192 }
+        }
       }
     }
   }
 }
 ```
-OpenCode needs models declared explicitly, so this list is the one place you name
-your own model ids — but the gateway itself imposes none.
+
+Generate the `models` block from whatever is live, instead of typing it by hand:
+```bash
+curl -s http://127.0.0.1:1234/v1/models \
+  | python3 -c 'import sys,json; print(json.dumps({m["id"]:{"name":m["id"].split("/")[-1]+" (local)"} for m in json.load(sys.stdin)["data"]}, indent=2))'
+```
+Paste the output as the value of `"models"`, then add `"limit"` to taste. Re-run it
+whenever you load or unload models (`cocore agent models`). Restart OpenCode to pick
+up config changes; run `/models` in the TUI to confirm they appear under "co/core (local)".
 
 ### pi
 Install the companion extension [`pi-cocore-local`](../pi-cocore-local) — it registers
