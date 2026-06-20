@@ -1,5 +1,6 @@
 # cocore_local_gateway.py
 import os
+import os as _os
 import re
 import subprocess
 
@@ -49,3 +50,26 @@ def resolve_binds(interfaces, addresses, iface_lookup=iface_ipv4):
         if ip:
             ips.add(ip)
     return sorted(ips)
+
+
+def build_registry(socket_paths, probe, mtime=_os.path.getmtime):
+    reg = {}
+    for sp in socket_paths:
+        try:
+            models = probe(sp)
+        except OSError:
+            continue
+        try:
+            mt = mtime(sp)
+        except OSError:
+            mt = 0.0
+        for mid in models:
+            reg.setdefault(mid, []).append((sp, mt))
+    return reg
+
+
+def select_socket(registry, model):
+    entries = registry.get(model)
+    if not entries:
+        return None
+    return max(entries, key=lambda e: e[1])[0]

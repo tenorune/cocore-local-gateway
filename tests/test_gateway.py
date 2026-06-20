@@ -43,5 +43,39 @@ class TestBinds(unittest.TestCase):
         self.assertEqual(ips, ["127.0.0.1"])
 
 
+class TestRegistry(unittest.TestCase):
+    def test_underscore_id_resolved_from_probe_not_filename(self):
+        # filename-parsing would corrupt "Q4_K_XL"; probing is authoritative
+        weird = "unsloth/gemma-4-26B-A4B-it-GGUF:UD-Q4_K_XL"
+        mtimes = {"/s/a.sock": 100.0, "/s/b.sock": 200.0}
+        probe = lambda p: [weird] if p == "/s/a.sock" else ["mlx-community/Qwen2.5-7B-Instruct-4bit"]
+        reg = g.build_registry(
+            ["/s/a.sock", "/s/b.sock"], probe=probe, mtime=lambda p: mtimes[p]
+        )
+        self.assertIn(weird, reg)
+        self.assertEqual(g.select_socket(reg, weird), "/s/a.sock")
+
+    def test_picks_most_recent_socket_for_duplicate_model(self):
+        m = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
+        mtimes = {"/s/old.sock": 100.0, "/s/new.sock": 300.0}
+        reg = g.build_registry(
+            ["/s/old.sock", "/s/new.sock"], probe=lambda p: [m], mtime=lambda p: mtimes[p]
+        )
+        self.assertEqual(g.select_socket(reg, m), "/s/new.sock")
+
+    def test_dead_socket_skipped(self):
+        def probe(p):
+            if p == "/s/dead.sock":
+                raise OSError("connection refused")
+            return ["mlx-community/Qwen2.5-7B-Instruct-4bit"]
+        reg = g.build_registry(
+            ["/s/dead.sock", "/s/live.sock"], probe=probe, mtime=lambda p: 1.0
+        )
+        self.assertIsNone(g.select_socket(reg, "missing/model"))
+        self.assertEqual(
+            g.select_socket(reg, "mlx-community/Qwen2.5-7B-Instruct-4bit"), "/s/live.sock"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
