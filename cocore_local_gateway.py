@@ -1,7 +1,9 @@
 # cocore_local_gateway.py
+import json
 import os
 import os as _os
 import re
+import socket
 import subprocess
 
 
@@ -73,3 +75,39 @@ def select_socket(registry, model):
     if not entries:
         return None
     return max(entries, key=lambda e: e[1])[0]
+
+
+def _recv_all(sock):
+    chunks = []
+    while True:
+        d = sock.recv(65536)
+        if not d:
+            break
+        chunks.append(d)
+    return b"".join(chunks)
+
+
+def open_uds_and_send(socket_path, method, path, body=b"", timeout=600):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    s.connect(socket_path)
+    head = (
+        f"{method} {path} HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode()
+    s.sendall(head + body)
+    return s
+
+
+def probe_socket_models(socket_path, timeout=5):
+    s = open_uds_and_send(socket_path, "GET", "/v1/models", b"", timeout=timeout)
+    try:
+        raw = _recv_all(s)
+    finally:
+        s.close()
+    _, _, body = raw.partition(b"\r\n\r\n")
+    payload = json.loads(body.decode("utf-8", "replace"))
+    return [m["id"] for m in payload.get("data", []) if "id" in m]

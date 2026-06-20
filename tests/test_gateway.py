@@ -1,5 +1,9 @@
 # tests/test_gateway.py
 import os
+import os as _os
+import socket as _socket
+import tempfile
+import threading
 import unittest
 import cocore_local_gateway as g
 
@@ -43,6 +47,23 @@ class TestBinds(unittest.TestCase):
         self.assertEqual(ips, ["127.0.0.1"])
 
 
+def _serve_uds_once(sock_path, response_bytes, capture):
+    srv = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+    srv.bind(sock_path)
+    srv.listen(1)
+
+    def run():
+        conn, _ = srv.accept()
+        capture["request"] = conn.recv(65536)
+        conn.sendall(response_bytes)
+        conn.close()
+        srv.close()
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return t
+
+
 class TestRegistry(unittest.TestCase):
     def test_underscore_id_resolved_from_probe_not_filename(self):
         # filename-parsing would corrupt "Q4_K_XL"; probing is authoritative
@@ -75,6 +96,42 @@ class TestRegistry(unittest.TestCase):
         self.assertEqual(
             g.select_socket(reg, "mlx-community/Qwen2.5-7B-Instruct-4bit"), "/s/live.sock"
         )
+
+
+class TestUds(unittest.TestCase):
+    def test_probe_returns_model_ids(self):
+        d = tempfile.mkdtemp()
+        sp = _os.path.join(d, "engine.sock")
+        body = '{"object":"list","data":[{"id":"mlx-community/Qwen2.5-7B-Instruct-4bit"}]}'
+        resp = (
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n{body}"
+        ).encode()
+        cap = {}
+        t = _serve_uds_once(sp, resp, cap)
+        ids = g.probe_socket_models(sp)
+        t.join(timeout=5)
+        self.assertEqual(ids, ["mlx-community/Qwen2.5-7B-Instruct-4bit"])
+        self.assertIn(b"GET /v1/models", cap["request"])
+
+    def test_relay_sends_request_and_streams_response(self):
+        d = tempfile.mkdtemp()
+        sp = _os.path.join(d, "engine.sock")
+        resp = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nHELLO-STREAM"
+        cap = {}
+        t = _serve_uds_once(sp, resp, cap)
+        s = g.open_uds_and_send(sp, "POST", "/v1/chat/completions", b'{"model":"x"}')
+        received = b""
+        while True:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            received += chunk
+        s.close()
+        t.join(timeout=5)
+        self.assertIn(b"HELLO-STREAM", received)
+        self.assertIn(b"POST /v1/chat/completions", cap["request"])
+        self.assertIn(b'{"model":"x"}', cap["request"])
 
 
 if __name__ == "__main__":
