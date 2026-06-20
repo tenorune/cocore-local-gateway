@@ -28,5 +28,20 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(cfg["interfaces"], [])
 
 
+class TestBinds(unittest.TestCase):
+    def test_always_includes_localhost_and_dedupes(self):
+        fake = {"feth3363": "10.121.33.197", "down0": None}
+        ips = g.resolve_binds(
+            interfaces=["feth3363", "down0"],
+            addresses=["127.0.0.1"],
+            iface_lookup=lambda n: fake.get(n),
+        )
+        self.assertEqual(ips, ["10.121.33.197", "127.0.0.1"])
+
+    def test_localhost_added_even_when_absent(self):
+        ips = g.resolve_binds(interfaces=[], addresses=[], iface_lookup=lambda n: None)
+        self.assertEqual(ips, ["127.0.0.1"])
+
+
 if __name__ == "__main__":
     unittest.main()

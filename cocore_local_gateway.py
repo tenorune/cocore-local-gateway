@@ -1,5 +1,7 @@
 # cocore_local_gateway.py
 import os
+import re
+import subprocess
 
 
 def _expand(path: str) -> str:
@@ -25,3 +27,25 @@ def load_config(env_text: str) -> dict:
         "socket_dir": _expand(raw.get("COCORE_SOCKET_DIR", "~/.cocore/sockets")),
         "log_path": _expand(raw.get("LOG_PATH", "~/.cocore/logs/local-gateway.log")),
     }
+
+
+def iface_ipv4(name: str):
+    try:
+        out = subprocess.run(
+            ["ifconfig", name], capture_output=True, text=True, timeout=5
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"\binet (\d+\.\d+\.\d+\.\d+)", out)
+    return m.group(1) if m else None
+
+
+def resolve_binds(interfaces, addresses, iface_lookup=iface_ipv4):
+    ips = {"127.0.0.1"}
+    for a in addresses:
+        ips.add(a)
+    for name in interfaces:
+        ip = iface_lookup(name)
+        if ip:
+            ips.add(ip)
+    return sorted(ips)
