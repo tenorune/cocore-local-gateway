@@ -12,11 +12,13 @@ overlay interface you choose (ZeroTier, Tailscale, etc.).
 ## Install
 
 ```bash
-git clone <this-repo> ~/Public/cocore-local-gateway
-cd ~/Public/cocore-local-gateway
+git clone <this-repo>
+cd cocore-local-gateway       # or wherever you cloned it
 cp .env.example .env          # edit BIND_INTERFACES / port to taste
 ./install.sh                  # loads a LaunchAgent (auto-start, auto-restart)
 ```
+
+`install.sh` runs from wherever the repo lives — clone it anywhere you like.
 
 Verify:
 
@@ -58,20 +60,14 @@ curl -N http://127.0.0.1:1234/v1/chat/completions \
 ### OpenCode
 OpenCode can't auto-discover models from an OpenAI-compatible endpoint — you list
 them yourself under `models`. The **keys must exactly match** the ids from
-`GET /v1/models`; everything else (`name`, `limit`) is just how OpenCode displays
-and sizes them.
+`GET /v1/models`; `name` is just the UI label.
 
 Merge this into `~/.config/opencode/opencode.jsonc` (create the file if absent):
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-
-  // Optional: make a cocore-local model the default when OpenCode starts.
-  // Format is "<providerID>/<modelID>".
-  "model": "cocore-local/REPLACE-WITH-A-MODEL-ID",
-
   "provider": {
-    "cocore-local": {                       // provider id — any string; used in "model" above
+    "cocore-local": {                       // provider id — any string
       "npm": "@ai-sdk/openai-compatible",   // the OpenAI-compatible adapter
       "name": "co/core (local)",            // label shown in the OpenCode UI
       "options": {
@@ -81,29 +77,27 @@ Merge this into `~/.config/opencode/opencode.jsonc` (create the file if absent):
       "models": {
         // ONE entry per id from GET /v1/models. The keys below are placeholders
         // showing the shape — replace them with the ids your cocore agent serves.
-        // "limit" is optional but recommended so OpenCode trims context correctly.
-        "<org>/<your-first-model-id>": {
-          "name": "My local model",
-          "limit": { "context": 32768, "output": 8192 }
-        },
-        "<org>/<your-second-model-id>": {
-          "name": "My other local model",
-          "limit": { "context": 32768, "output": 8192 }
-        }
+        "<org>/<your-first-model-id>":  { "name": "My local model" },
+        "<org>/<your-second-model-id>": { "name": "My other local model" }
       }
     }
   }
 }
 ```
 
-Generate the `models` block from whatever is live, instead of typing it by hand:
+Don't hand-type the `models` block — generate it from whatever is live:
 ```bash
 curl -s http://127.0.0.1:1234/v1/models \
   | python3 -c 'import sys,json; print(json.dumps({m["id"]:{"name":m["id"].split("/")[-1]+" (local)"} for m in json.load(sys.stdin)["data"]}, indent=2))'
 ```
-Paste the output as the value of `"models"`, then add `"limit"` to taste. Re-run it
-whenever you load or unload models (`cocore agent models`). Restart OpenCode to pick
-up config changes; run `/models` in the TUI to confirm they appear under "co/core (local)".
+Paste the output as the value of `"models"`. Re-run it whenever you load or unload
+models (`cocore agent models`), then restart OpenCode and run `/models` in the TUI to
+confirm they appear under "co/core (local)".
+
+The `name` is cosmetic and the ids come straight from the gateway, so there's nothing
+model-specific to get right. You *can* add a per-model `"limit": { "context": N,
+"output": N }` if OpenCode's default context sizing feels off — look the numbers up on
+the model's own card rather than copying any from this README.
 
 ### pi
 Install the companion extension [`pi-cocore-local`](../pi-cocore-local) — it registers
