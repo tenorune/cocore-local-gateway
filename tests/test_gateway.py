@@ -170,9 +170,9 @@ class TestHandlerEndToEnd(unittest.TestCase):
     def test_models_and_chat_route_through_gateway(self):
         from http.server import ThreadingHTTPServer
 
-        d = tempfile.mkdtemp()
+        d = tempfile.mkdtemp(dir="/tmp")
         model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
-        self._start_fake_engine(d, model)
+        engine_srv = self._start_fake_engine(d, model)
         g.Handler.socket_dir = d
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), g.Handler)
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -194,12 +194,14 @@ class TestHandlerEndToEnd(unittest.TestCase):
             self.assertEqual(r2.status, 200)
             self.assertIn(b"hi", r2.read())
         finally:
+            engine_srv.close()
             httpd.shutdown()
+            httpd.server_close()
 
     def test_unknown_model_returns_404(self):
         from http.server import ThreadingHTTPServer
 
-        d = tempfile.mkdtemp()
+        d = tempfile.mkdtemp(dir="/tmp")
         g.Handler.socket_dir = d
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), g.Handler)
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -215,6 +217,7 @@ class TestHandlerEndToEnd(unittest.TestCase):
             self.assertEqual(r.status, 404)
         finally:
             httpd.shutdown()
+            httpd.server_close()
 
 
 if __name__ == "__main__":
