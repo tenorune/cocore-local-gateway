@@ -1,4 +1,6 @@
 # tests/test_gateway.py
+import http.client
+import json
 import os
 import os as _os
 import socket as _socket
@@ -132,6 +134,87 @@ class TestUds(unittest.TestCase):
         self.assertIn(b"HELLO-STREAM", received)
         self.assertIn(b"POST /v1/chat/completions", cap["request"])
         self.assertIn(b'{"model":"x"}', cap["request"])
+
+
+class TestHandlerEndToEnd(unittest.TestCase):
+    def _start_fake_engine(self, sock_dir, model):
+        sp = _os.path.join(sock_dir, f"engine-fake-{model.replace('/', '_')}.sock")
+        srv = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+        srv.bind(sp)
+        srv.listen(8)
+
+        def loop():
+            while True:
+                try:
+                    conn, _ = srv.accept()
+                except OSError:
+                    return
+                req = conn.recv(65536)
+                if b"GET /v1/models" in req:
+                    body = json.dumps(
+                        {"object": "list", "data": [{"id": model}]}
+                    ).encode()
+                else:
+                    body = b'{"choices":[{"message":{"content":"hi"}}]}'
+                conn.sendall(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                    + f"Content-Length: {len(body)}\r\n".encode()
+                    + b"Connection: close\r\n\r\n"
+                    + body
+                )
+                conn.close()
+
+        threading.Thread(target=loop, daemon=True).start()
+        return srv
+
+    def test_models_and_chat_route_through_gateway(self):
+        from http.server import ThreadingHTTPServer
+
+        d = tempfile.mkdtemp()
+        model = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+        self._start_fake_engine(d, model)
+        g.Handler.socket_dir = d
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), g.Handler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        port = httpd.server_address[1]
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            c.request("GET", "/v1/models")
+            r = c.getresponse()
+            models = json.loads(r.read())
+            self.assertEqual([m["id"] for m in models["data"]], [model])
+
+            c.request(
+                "POST",
+                "/v1/chat/completions",
+                body=json.dumps({"model": model, "messages": []}),
+                headers={"Content-Type": "application/json"},
+            )
+            r2 = c.getresponse()
+            self.assertEqual(r2.status, 200)
+            self.assertIn(b"hi", r2.read())
+        finally:
+            httpd.shutdown()
+
+    def test_unknown_model_returns_404(self):
+        from http.server import ThreadingHTTPServer
+
+        d = tempfile.mkdtemp()
+        g.Handler.socket_dir = d
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), g.Handler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        port = httpd.server_address[1]
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            c.request(
+                "POST",
+                "/v1/chat/completions",
+                body=json.dumps({"model": "nope/nope", "messages": []}),
+            )
+            r = c.getresponse()
+            self.assertEqual(r.status, 404)
+        finally:
+            httpd.shutdown()
 
 
 if __name__ == "__main__":
