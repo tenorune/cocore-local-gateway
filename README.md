@@ -1,8 +1,8 @@
 # cocore-local-gateway
 
 Serve the MLX models your [cocore](https://cocore.dev) agent runs locally to your
-own tools — over a standard OpenAI-compatible endpoint — without touching ollama
-and without round-tripping through the cocore network.
+own tools — over a standard OpenAI-compatible endpoint — without round-tripping
+through the cocore network.
 
 The cocore agent runs each model as an OpenAI-compatible `vllm_mlx` server bound to
 a **Unix domain socket** (`~/.cocore/sockets/engine-*.sock`) with no local TCP port.
